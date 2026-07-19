@@ -2,6 +2,7 @@ from dataclasses import dataclass
 
 from typing import Any, Dict, List
 
+import numpy as np
 import regex
 import torch
 from datasets import Audio, Dataset
@@ -44,9 +45,33 @@ class SimpleCollator:
         )
 
     def __call__(self, features: List[Dict[str, Any]]) -> Dict[str, torch.Tensor]:
-        print(len(features[0]["messages"][1]["content"][0]["audio"])) # list
+        messages = []
+        for feature in features:
+            conversation = []
+            for message in feature["messages"]:
+                message = dict(message)
+                content = message.get("content")
+                if isinstance(content, list):
+                    content = [
+                        dict(block) if isinstance(block, dict) else block
+                        for block in content
+                    ]
+                    for block in content:
+                        if (
+                            isinstance(block, dict)
+                            and block.get("type") == "audio"
+                            and isinstance(block.get("audio"), list)
+                        ):
+                            # datasets serializes the ndarray produced by _normalize as
+                            # a Python list. Qwen3ASRProcessor.load_audio does not accept
+                            # lists, so restore the representation expected by it.
+                            block["audio"] = np.asarray(block["audio"], dtype=np.float32)
+                    message["content"] = content
+                conversation.append(message)
+            messages.append(conversation)
+
         inputs: Any = self.processor.apply_chat_template(
-            [feature["messages"] for feature in features],
+            messages,
             chat_template=CHAT_TEMPLATE,
             tokenize=True,
             return_dict=True,
@@ -57,8 +82,8 @@ class SimpleCollator:
         )
         labels[assistant_masks == 0] = -100
         return {
-            "input_ids": inputs.input_ids.to(self.dtype),
-            "attention_mask": inputs.attention_mask.to(self.dtype),
+            "input_ids": inputs.input_ids,
+            "attention_mask": inputs.attention_mask,
             "input_features": inputs.input_features.to(self.dtype),
             "input_features_mask": inputs.input_features_mask.to(self.dtype),
             "labels": labels,

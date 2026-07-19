@@ -6,42 +6,49 @@ from transformers import (
     Seq2SeqTrainer,
     Seq2SeqTrainingArguments,
 )
-from transformers.models.qwen3_asr import Qwen3ASRProcessor, Qwen3ASRForConditionalGeneration
+from transformers.models.qwen3_asr import (
+    Qwen3ASRProcessor,
+    Qwen3ASRForConditionalGeneration,
+)
 from peft import get_peft_model, LoraConfig
 
 from scripts.utils import get_utc_time_str, SAMPLE_RATE
 from src.data_manager import SimpleDataManager
 
+with open("./src/qwen3_asr_chat_template_fixed.jinja", "r") as f:
+    CHAT_TEMPLATE = f.read()
+
 def parse_args() -> argparse.Namespace:
     parser = argparse.ArgumentParser()
-    parser.add_argument("--name", default="simple_ft")
-    parser.add_argument("--output_dir", default="./outputs/finetune")
+    parser.add_argument("--name", type=str, default="simple_lora")
+    parser.add_argument("--output_dir", type=str, default="./outputs/lora")
 
     # model
-    parser.add_argument("--model_name", default="Qwen/Qwen3-ASR-1.7B-hf")
-    parser.add_argument("--attn_implementation", default="sdpa")
+    parser.add_argument("--model_name", type=str, default="Qwen/Qwen3-ASR-1.7B-hf")
+    parser.add_argument("--attn_implementation", type=str, default="sdpa")
 
     # dataset
-    parser.add_argument("--data_file", default="KYOU-0/Ace-Taffy-voice")
+    parser.add_argument("--data_file", type=str, default="KYOU-0/Ace-Taffy-voice")
     parser.add_argument("--valid_size", type=float, default=0)
     parser.add_argument("--num_proc", type=int, default=8)
 
     # train
     parser.add_argument("--gradient_checkpointing", action="store_true")
-    parser.add_argument("--learning_rate", type=float, default=1e-4)
+    parser.add_argument("--learning_rate", type=float, default=5e-4)
     parser.add_argument("--lr_scheduler_type", type=str, default="cosine")
     parser.add_argument("--weight_decay", type=float, default=0.0)
     parser.add_argument("--max_steps", type=int, default=50)
     parser.add_argument("--logging_steps", type=float, default=0.01)
     parser.add_argument("--warmup_steps", type=float, default=0.1)
     parser.add_argument("--save_steps", type=float, default=0.2)
-    parser.add_argument("--per_device_train_batch_size", type=int, default=16)
-    parser.add_argument("--gradient_accumulation_steps", type=int, default=4)
+    parser.add_argument("--per_device_train_batch_size", type=int, default=8)
+    parser.add_argument("--gradient_accumulation_steps", type=int, default=8)
     parser.add_argument("--save_total_limit", type=int, default=3)
     parser.add_argument("--seed", type=int, default=42)
     parser.add_argument("--report_to_wandb", action="store_true")
 
     return parser.parse_args()
+
 
 def main() -> None:
     args = parse_args()
@@ -51,7 +58,10 @@ def main() -> None:
     dtype = torch.bfloat16
 
     # ---------------- model ----------------
-    processor = Qwen3ASRProcessor.from_pretrained(args.model_name, local_files_only=True)
+    processor = Qwen3ASRProcessor.from_pretrained(
+        args.model_name, local_files_only=True
+    )
+    processor.chat_template = CHAT_TEMPLATE
     model = Qwen3ASRForConditionalGeneration.from_pretrained(
         args.model_name,
         dtype=dtype,
@@ -61,9 +71,13 @@ def main() -> None:
 
     # Lora
     lora_config = LoraConfig(
-        r=64,
-        target_modules=["model.model.language_model.*.q_proj", "model.model.language_model.*.v_proj", "lm_head"],
-        lora_alpha=64,
+        r=128,
+        target_modules=[
+            "model.model.language_model.*.q_proj",
+            "model.model.language_model.*.v_proj",
+            "lm_head",
+        ],
+        lora_alpha=128,
         ensure_weight_tying=True,
     )
     model = get_peft_model(model, lora_config)
@@ -98,7 +112,7 @@ def main() -> None:
         bf16=True,
         tf32=True,
         gradient_checkpointing=args.gradient_checkpointing,
-        torch_compile=True,
+        # torch_compile=True,
         learning_rate=args.learning_rate,
         lr_scheduler_type=args.lr_scheduler_type,
         weight_decay=args.weight_decay,
