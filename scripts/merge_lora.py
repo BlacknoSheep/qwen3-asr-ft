@@ -39,9 +39,7 @@ def main():
         safe_serialization=True,
     )
 
-    processor = Qwen3ASRProcessor.from_pretrained(
-        args.base_model, local_files_only=True
-    )
+    processor = Qwen3ASRProcessor.from_pretrained(args.base_model, local_files_only=True)
     processor.save_pretrained(args.output_path)
 
 

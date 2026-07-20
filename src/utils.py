@@ -33,9 +33,7 @@ def build_messages(audio, language: str | None, text: str):
         },
         {
             "role": "assistant",
-            "content": [
-                {"type": "text", "text": f"language {language}<asr_text>{text}"}
-            ],
+            "content": [{"type": "text", "text": f"language {language}<asr_text>{text}"}],
         },
     ]
 
@@ -64,10 +62,7 @@ def generate_assistant_masks(
             assistant 内容及 assistant_end 对应位置为 1，其余为 0。
     """
     if input_ids.ndim != 2:
-        raise ValueError(
-            f"input_ids 必须是二维张量 [batch_size, seq_len]，"
-            f"实际 shape={tuple(input_ids.shape)}"
-        )
+        raise ValueError(f"input_ids 必须是二维张量 [batch_size, seq_len]，实际 shape={tuple(input_ids.shape)}")
 
     # 兼容 tokenizer.encode(..., return_tensors="pt") 返回的 [1, len]
     assistant_start_ids = assistant_start_ids.reshape(-1).to(

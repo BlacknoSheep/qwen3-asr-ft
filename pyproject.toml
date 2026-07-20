@@ -14,3 +14,12 @@ dependencies = [
     "torchcodec>=0.15.0",
     "transformers>=5.14.1",
 ]
+
+[tool.ruff]
+line-length = 120
+indent-width = 4
+
+[dependency-groups]
+dev = [
+    "ruff>=0.15.22",
+]

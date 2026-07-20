@@ -18,6 +18,7 @@ from src.data_manager import SimpleDataManager
 with open("./src/qwen3_asr_chat_template_fixed.jinja", "r") as f:
     CHAT_TEMPLATE = f.read()
 
+
 def parse_args() -> argparse.Namespace:
     parser = argparse.ArgumentParser()
     parser.add_argument("--name", type=str, default="simple_lora")
@@ -26,6 +27,7 @@ def parse_args() -> argparse.Namespace:
     # model
     parser.add_argument("--model_name", type=str, default="Qwen/Qwen3-ASR-1.7B-hf")
     parser.add_argument("--attn_implementation", type=str, default="sdpa")
+    parser.add_argument("--rank", type=int, default=16)
 
     # dataset
     parser.add_argument("--data_file", type=str, default="KYOU-0/Ace-Taffy-voice")
@@ -33,7 +35,6 @@ def parse_args() -> argparse.Namespace:
     parser.add_argument("--num_proc", type=int, default=8)
 
     # train
-    parser.add_argument("--gradient_checkpointing", action="store_true")
     parser.add_argument("--learning_rate", type=float, default=5e-4)
     parser.add_argument("--lr_scheduler_type", type=str, default="cosine")
     parser.add_argument("--weight_decay", type=float, default=0.0)
@@ -41,8 +42,8 @@ def parse_args() -> argparse.Namespace:
     parser.add_argument("--logging_steps", type=float, default=0.01)
     parser.add_argument("--warmup_steps", type=float, default=0.1)
     parser.add_argument("--save_steps", type=float, default=0.2)
-    parser.add_argument("--per_device_train_batch_size", type=int, default=8)
-    parser.add_argument("--gradient_accumulation_steps", type=int, default=8)
+    parser.add_argument("--per_device_train_batch_size", type=int, default=4)
+    parser.add_argument("--gradient_accumulation_steps", type=int, default=16)
     parser.add_argument("--save_total_limit", type=int, default=3)
     parser.add_argument("--seed", type=int, default=42)
     parser.add_argument("--report_to_wandb", action="store_true")
@@ -58,9 +59,7 @@ def main() -> None:
     dtype = torch.bfloat16
 
     # ---------------- model ----------------
-    processor = Qwen3ASRProcessor.from_pretrained(
-        args.model_name, local_files_only=True
-    )
+    processor = Qwen3ASRProcessor.from_pretrained(args.model_name, local_files_only=True)
     processor.chat_template = CHAT_TEMPLATE
     model = Qwen3ASRForConditionalGeneration.from_pretrained(
         args.model_name,
@@ -71,17 +70,12 @@ def main() -> None:
 
     # Lora
     lora_config = LoraConfig(
-        r=128,
-        target_modules=[
-            "model.model.language_model.*.q_proj",
-            "model.model.language_model.*.v_proj",
-            "lm_head",
-        ],
-        lora_alpha=128,
-        ensure_weight_tying=True,
+        r=args.rank,
+        target_modules=r"^model\.language_model\..*\.(q_proj|v_proj)$",
+        lora_alpha=args.rank,
     )
     model = get_peft_model(model, lora_config)
-    model.print_trainable_parameters()  # trainable params: 19,709,952 || all params: 2,057,762,432 || trainable%: 0.9578
+    model.print_trainable_parameters()  # trainable params: 3,211,264 || all params: 2,041,263,744 || trainable%: 0.1573
 
     # ---------------- dataset ----------------
     if args.data_file.endswith(".json") or args.data_file.endswith(".jsonl"):
@@ -111,8 +105,7 @@ def main() -> None:
         output_dir=output_dir,
         bf16=True,
         tf32=True,
-        gradient_checkpointing=args.gradient_checkpointing,
-        # torch_compile=True,
+        gradient_checkpointing=True,
         learning_rate=args.learning_rate,
         lr_scheduler_type=args.lr_scheduler_type,
         weight_decay=args.weight_decay,

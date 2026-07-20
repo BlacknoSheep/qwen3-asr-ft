@@ -52,10 +52,7 @@ class SimpleCollator:
                 message = dict(message)
                 content = message.get("content")
                 if isinstance(content, list):
-                    content = [
-                        dict(block) if isinstance(block, dict) else block
-                        for block in content
-                    ]
+                    content = [dict(block) if isinstance(block, dict) else block for block in content]
                     for block in content:
                         if (
                             isinstance(block, dict)
@@ -77,9 +74,7 @@ class SimpleCollator:
             return_dict=True,
         )
         labels = inputs.input_ids.clone()
-        assistant_masks = generate_assistant_masks(
-            labels, self.assistant_start_ids, self.assistant_end_ids
-        )
+        assistant_masks = generate_assistant_masks(labels, self.assistant_start_ids, self.assistant_end_ids)
         labels[assistant_masks == 0] = -100
         return {
             "input_ids": inputs.input_ids,
@@ -101,12 +96,8 @@ class SimpleDataManager:
         dataset 必须包含这些列：['audio', 'language', 'transcription']
         """
         assert "audio" in dataset.column_names, "Dataset must contain 'audio' column."
-        assert "language" in dataset.column_names, (
-            "Dataset must contain 'language' column."
-        )
-        assert "transcription" in dataset.column_names, (
-            "Dataset must contain 'transcription' column."
-        )
+        assert "language" in dataset.column_names, "Dataset must contain 'language' column."
+        assert "transcription" in dataset.column_names, "Dataset must contain 'transcription' column."
 
         self.dataset = dataset
         self.processor = processor
@@ -123,9 +114,7 @@ class SimpleDataManager:
         """
         返回的数据集包含以下列：["messages"]，具体处理延迟到 collator 便于 batch 和 pad
         """
-        self.dataset = self.dataset.cast_column(
-            "audio", Audio(sampling_rate=self.samplerate)
-        )
+        self.dataset = self.dataset.cast_column("audio", Audio(sampling_rate=self.samplerate))
         self.dataset = self.dataset.map(
             self._normalize,
             remove_columns=self.dataset.column_names,

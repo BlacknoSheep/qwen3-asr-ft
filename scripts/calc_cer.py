@@ -30,7 +30,7 @@ def parse_args() -> argparse.Namespace:
     parser.add_argument("--data_file", default="KYOU-0/Ace-Taffy-voice")
     parser.add_argument("--num_proc", type=int, default=8)
 
-    parser.add_argument("--per_device_eval_batch_size", type=int, default=8)
+    parser.add_argument("--batch_size", type=int, default=8)
     parser.add_argument("--max_new_tokens", type=int, default=224)
     parser.add_argument("--seed", type=int, default=42)
 
@@ -89,9 +89,7 @@ def _message_text(message: dict[str, Any]) -> str:
     if not isinstance(content, list):
         return ""
     return "".join(
-        str(block.get("text", ""))
-        for block in content
-        if isinstance(block, dict) and block.get("type") == "text"
+        str(block.get("text", "")) for block in content if isinstance(block, dict) and block.get("type") == "text"
     )
 
 
@@ -128,9 +126,7 @@ def main() -> None:
     dtype = torch.bfloat16 if device.type == "cuda" else torch.float32
 
     # ---------------- model ----------------
-    processor = Qwen3ASRProcessor.from_pretrained(
-        args.model_name, local_files_only=True
-    )
+    processor = Qwen3ASRProcessor.from_pretrained(args.model_name, local_files_only=True)
     model = Qwen3ASRForConditionalGeneration.from_pretrained(
         args.model_name,
         dtype=dtype,
@@ -165,7 +161,7 @@ def main() -> None:
     dataset = dm.get_dataset()
 
     # 不能使用训练 collator：它的 input_ids 包含 assistant 标签，会导致答案泄漏。
-    batch_size = args.per_device_eval_batch_size
+    batch_size = args.batch_size
     total_edits = 0
     total_reference_chars = 0
 
