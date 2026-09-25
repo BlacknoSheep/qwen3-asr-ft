@@ -22,8 +22,8 @@ def parse_args() -> argparse.Namespace:
     parser = argparse.ArgumentParser()
 
     # model
-    parser.add_argument("--model_name", default="Qwen/Qwen3-ASR-1.7B-hf")
-    parser.add_argument("--lora_model", type=str, default=None)
+    parser.add_argument("--model_name", default="Qwen/Qwen3-ASR-1.7B-hf", help="base model or merged model")
+    parser.add_argument("--lora_model", type=str, default=None, help="LoRA for the base model")
     parser.add_argument("--attn_implementation", default="sdpa")
 
     # dataset

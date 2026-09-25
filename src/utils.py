@@ -18,9 +18,9 @@ def normalize_language(language: str | None) -> str | None:
     return resolve_language(language)
 
 
-def build_messages(audio, language: str | None, text: str):
+def build_messages(audio, language: str | None, transcription: str | None):
     language = resolve_language(language)
-    return [
+    messages = [
         {"role": "system", "content": [{"type": "text", "text": language}]},
         {
             "role": "user",
@@ -31,11 +31,15 @@ def build_messages(audio, language: str | None, text: str):
                 },
             ],
         },
-        {
-            "role": "assistant",
-            "content": [{"type": "text", "text": f"language {language}<asr_text>{text}"}],
-        },
     ]
+    if transcription is not None:
+        messages.append(
+            {
+                "role": "assistant",
+                "content": [{"type": "text", "text": f"language {language}<asr_text>{transcription}"}],
+            }
+        )
+    return messages
 
 
 def generate_assistant_masks(

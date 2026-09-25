@@ -21,7 +21,12 @@ with open("./src/qwen3_asr_chat_template_fixed.jinja", "r") as f:
 
 def parse_args() -> argparse.Namespace:
     parser = argparse.ArgumentParser()
-    parser.add_argument("--name", type=str, default="simple_lora")
+    parser.add_argument(
+        "--name",
+        type=str,
+        default="simple_lora",
+        help="name of the experiment. Weights will be saved to <output_dir>/<name>",
+    )
     parser.add_argument("--output_dir", type=str, default="./outputs/lora")
 
     # model
@@ -42,7 +47,7 @@ def parse_args() -> argparse.Namespace:
     parser.add_argument("--logging_steps", type=float, default=0.01)
     parser.add_argument("--warmup_steps", type=float, default=0.1)
     parser.add_argument("--save_steps", type=float, default=0.2)
-    parser.add_argument("--per_device_train_batch_size", type=int, default=4)
+    parser.add_argument("--per_device_train_batch_size", type=int, default=2)
     parser.add_argument("--gradient_accumulation_steps", type=int, default=16)
     parser.add_argument("--save_total_limit", type=int, default=3)
     parser.add_argument("--seed", type=int, default=42)

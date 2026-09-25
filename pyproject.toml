@@ -8,11 +8,20 @@ dependencies = [
     "accelerate>=1.14.0",
     "datasets>=5.0.0",
     "evaluate>=0.4.6",
+    "librosa>=1.0.0",
+    "onnxruntime>=1.27.0",
     "peft>=0.19.1",
+    "silero-vad>=6.2.1",
+    "soundfile>=0.14.0",
     "torch>=2.13.0",
     "torchaudio>=2.11.0",
     "torchcodec>=0.15.0",
     "transformers>=5.14.1",
+]
+
+[project.optional-dependencies]
+vllm = [
+    "vllm[audio]>=0.30.0",
 ]
 
 [tool.ruff]

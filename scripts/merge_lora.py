@@ -10,7 +10,7 @@ import os
 
 def parse_args() -> argparse.Namespace:
     parser = argparse.ArgumentParser()
-    parser.add_argument("--base_model", type=str, default="Qwen/Qwen3-ASR-1.7B-hf")
+    parser.add_argument("--base_model", type=str)
     parser.add_argument("--lora_model", type=str)
     parser.add_argument("--output_path", type=str)
 
