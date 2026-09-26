@@ -71,16 +71,14 @@ python -m scripts.merge_lora \
 
 # Result
 
-数据集：KYOU-0/Ace-Taffy-voice
+- CER，去除空白、标点、特殊符号
 
-| model                  | cer\* |
-| :--------------------- | :---- |
-| Qwen/Qwen3-ASR-0.6B-hf | 32.75 |
-| Qwen/Qwen3-ASR-1.7B-hf | 30.03 |
-| simple_lora-0.6B       | 14.95 |
-| simple_lora-1.7B       | 14.10 |
-
-\*去除空白、标点、特殊符号
+| model                  | KYOU-0/Ace-Taffy-voice | 2026-09-25-11_30min |
+| :--------------------- | ---------------------: | ------------------: |
+| Qwen/Qwen3-ASR-0.6B-hf |                  32.75 |               43.19 |
+| Qwen/Qwen3-ASR-1.7B-hf |                  30.03 |               39.12 |
+| simple_lora-0.6B       |                  14.95 |               34.86 |
+| simple_lora-1.7B       |                  14.10 |               28.69 |
 
 # 推理
 
