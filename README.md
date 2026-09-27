@@ -53,7 +53,7 @@ python -m scripts.generate_srt \
   --output_path="./outputs/data/audio.srt" \
   --language="zh"
 
-# 2. 使用 Aegsub 等软件对字幕进行校对
+# 2. 使用 Aegisub 等软件对字幕进行校对
 
 # 3. 生成数据集
 python -m scripts.srt2dataset \
