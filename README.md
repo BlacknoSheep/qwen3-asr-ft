@@ -1,15 +1,36 @@
-# 准备
+# 准备环境
+
+配置要求：
+
+- Qwen3-ASR-0.6B：至少 8GB 显存
+- Qwen3-ASR-1.7B：至少 12GB 显存
+
+<br/>
+
+1. 安装 [uv](https://docs.astral.sh/uv/getting-started/installation/#standalone-installer)
 
 ```bash
+curl -LsSf https://astral.sh/uv/install.sh | sh
+```
+
+2. 准备代码和环境
+
+```bash
+git clone https://github.com/BlacknoSheep/qwen3-asr-ft.git
+cd qwen3-asr-ft
+
 uv sync
-
 . .venv/bin/activate
+```
 
+3. 下载模型
+
+```bash
 hf download Qwen/Qwen3-ASR-1.7B-hf
 hf download Qwen/Qwen3-ASR-0.6B-hf
 ```
 
-## 数据集
+# 数据集
 
 1. jsonl 数据
 
@@ -46,7 +67,7 @@ python -m scripts.srt2dataset \
 
 至少包含`audio`，`language`，`transcription`这三列，例如：https://huggingface.co/datasets/KYOU-0/Ace-Taffy-voice
 
-# Finetune
+# 微调
 
 1. 微调 lora
 
@@ -60,6 +81,11 @@ python -m scripts.simple_lora \
 # hf 数据集：--data_file="KYOU-0/Ace-Taffy-voice"
 ```
 
+注意：
+   - 为了充分利用样本，确保 `per_device_train_batch_size` × `gradient_accumulation_steps` >= 样本数量
+   - 默认 `rank=16` ，可根据样本数量适当调整
+   - 显存不足时可以降低 `per_device_train_batch_size` 和 `rank`
+
 2. 合并 lora 到主模型
 
 ```bash
@@ -69,7 +95,11 @@ python -m scripts.merge_lora \
   --output_path="./outputs/merged/1.7b"
 ```
 
-# Result
+# 结果
+
+```bash
+python -m scripts.calc_cer --model_name="./outputs/merged/1.7b" --data_file="./outputs/data/metadata.jsonl"
+```
 
 - CER，去除空白、标点、特殊符号
 
