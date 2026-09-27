@@ -113,6 +113,10 @@ python -m scripts.calc_cer --model_name="./outputs/merged/1.7b" --data_file="./o
 
 # 推理
 
+```bash
+python tests/test_transcribe.py   --model_name="./outputs/merged/1.7b"   --audio_path="./tests/test.wav"   --language="zh"
+```
+
 ## vllm
 
 ```bash
