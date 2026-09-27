@@ -82,7 +82,8 @@ python -m scripts.simple_lora \
 ```
 
 注意：
-   - 为了充分利用样本，确保 `per_device_train_batch_size` × `gradient_accumulation_steps` >= 样本数量
+   - 为了充分利用样本，确保 `per_device_train_batch_size` × `gradient_accumulation_steps` × `max_steps` >= 样本数量
+     - 默认 `max_steps=50`，步数过多会过拟合
    - 默认 `rank=16` ，可根据样本数量适当调整
    - 显存不足时可以降低 `per_device_train_batch_size` 和 `rank`
 
