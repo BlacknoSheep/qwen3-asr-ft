@@ -47,7 +47,9 @@ hf download Qwen/Qwen3-ASR-0.6B-hf
 # --model_name 为 huggingface 模型名称，或者本地模型路径
 
 # 1. 生成 srt 字幕文件
-python -m scripts.generate_srt \
+# generate_srt.py：完整音频送入 vad，容易漏
+# generate_srt2.py：重叠窗口切分 + 识别 + 合并，更不容易漏，但是少数片段会被从中间切开
+python -m scripts.generate_srt2 \
   --model_name="Qwen/Qwen3-ASR-1.7B-hf" \
   --audio_path="./tmp/audio.wav" \
   --output_path="./outputs/data/audio.srt" \
