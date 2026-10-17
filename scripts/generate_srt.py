@@ -30,6 +30,7 @@ samplerate = 16000
 threshold = 0.2
 min_speech_duration_ms = 500
 max_speech_duration_s = 30
+min_silence_duration_ms = 500
 
 # stt
 device = torch.device("cuda")
@@ -69,6 +70,7 @@ def main():
         sampling_rate=samplerate,
         min_speech_duration_ms=min_speech_duration_ms,
         max_speech_duration_s=max_speech_duration_s,
+        min_silence_duration_ms=min_silence_duration_ms,
     )  # samples
     print(len(timestamps))
 
