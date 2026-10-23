@@ -2,7 +2,6 @@ import argparse
 import os
 from typing import Any
 
-import numpy as np
 import regex as re
 import torch
 from datasets import load_dataset
@@ -13,6 +12,7 @@ from transformers.models.qwen3_asr import (
 )
 
 from scripts.utils import SAMPLE_RATE
+from src.data_manager import SimpleDataManager
 
 NON_LANGUAGE_RE = re.compile(r"[^\p{L}\p{N}]+")
 
@@ -61,64 +61,7 @@ def edit_distance(prediction: str, reference: str) -> int:
     return previous[-1]
 
 
-def _copy_message(message: dict[str, Any]) -> dict[str, Any]:
-    """复制 datasets 反序列化的消息，并将音频 list 还原为 ndarray。"""
-    message = dict(message)
-    content = message.get("content")
-    if not isinstance(content, list):
-        return message
-
-    copied_content = []
-    for block in content:
-        if not isinstance(block, dict):
-            copied_content.append(block)
-            continue
-        block = dict(block)
-        if block.get("type") == "audio" and isinstance(block.get("audio"), list):
-            block["audio"] = np.asarray(block["audio"], dtype=np.float32)
-        copied_content.append(block)
-    message["content"] = copied_content
-    return message
-
-
-def _message_text(message: dict[str, Any]) -> str:
-    content = message.get("content", "")
-    if isinstance(content, str):
-        return content
-    if not isinstance(content, list):
-        return ""
-    return "".join(
-        str(block.get("text", "")) for block in content if isinstance(block, dict) and block.get("type") == "text"
-    )
-
-
-def prepare_eval_conversation(
-    messages: list[dict[str, Any]],
-    processor: Qwen3ASRProcessor,
-) -> tuple[list[dict[str, Any]], str]:
-    """将 assistant 标签从生成输入中移除，并返回纯转写标签。"""
-    prompt_messages = []
-    assistant_parts = []
-    for raw_message in messages:
-        message = _copy_message(raw_message)
-        if message.get("role") == "assistant":
-            assistant_parts.append(_message_text(message))
-        else:
-            prompt_messages.append(message)
-
-    if not assistant_parts:
-        raise ValueError("评估样本中没有 assistant 标签")
-
-    assistant_text = "".join(assistant_parts)
-    reference = processor.extract_transcription(assistant_text)
-    if not isinstance(reference, str):
-        raise TypeError("assistant 标签解析结果必须是字符串")
-    return prompt_messages, reference
-
-
 def main() -> None:
-    from src.data_manager import SimpleDataManager
-
     args = parse_args()
     torch.manual_seed(args.seed)
     device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
@@ -171,12 +114,15 @@ def main() -> None:
     )
     for start in progress:
         rows = dataset[start : start + batch_size]
-        conversations = []
-        references = []
-        for messages in rows["messages"]:
-            conversation, reference = prepare_eval_conversation(messages, processor)
-            conversations.append(conversation)
-            references.append(reference)
+        conversations = [
+            [
+                {
+                    "role": "user",
+                    "content": [{"type": "audio", "audio": audio.get_all_samples().data[0].numpy()}],
+                }
+            ]
+            for audio in rows["audio"]
+        ]
 
         inputs: Any = processor.apply_chat_template(
             conversations,
@@ -198,23 +144,13 @@ def main() -> None:
 
         # decoder-only generate 返回“输入 + 新 token”，这里只解码 assistant 新输出。
         assistant_ids = generated_ids[:, prompt_length:].cpu()
-        predictions = processor.decode(
-            assistant_ids,
-            return_format="transcription_only",
-        )
-        if isinstance(predictions, str):
-            predictions = [predictions]
-        normalized_predictions = [normalize_text_for_cer(s) for s in predictions]  # type: ignore
-        normalized_references = [normalize_text_for_cer(s) for s in references]
-        total_edits += sum(
-            edit_distance(prediction, reference)
-            for prediction, reference in zip(
-                normalized_predictions,
-                normalized_references,
-                strict=True,
-            )
-        )
-        total_reference_chars += sum(map(len, normalized_references))
+        predictions = processor.decode(assistant_ids, skip_special_tokens=True)
+        for prediction, reference in zip(predictions, rows["transcription"], strict=True):
+            # 仅截取转录，不使用会消除重复的解析器；缺少分隔符视为空转录。
+            prediction = normalize_text_for_cer(prediction.partition("<asr_text>")[2])
+            reference = normalize_text_for_cer(reference)
+            total_edits += edit_distance(prediction, reference)
+            total_reference_chars += len(reference)
 
         completed = min(start + batch_size, len(dataset))
         progress.set_postfix(samples=f"{completed}/{len(dataset)}")
