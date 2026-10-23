@@ -4,12 +4,12 @@
 
 import argparse
 from pathlib import Path
-from transformers.audio_utils import load_audio
+
 import torch
-from silero_vad import load_silero_vad, get_speech_timestamps
+from silero_vad import get_speech_timestamps, load_silero_vad
 from tqdm import tqdm
-from transformers.models.qwen3_asr import Qwen3ASRProcessor
-from transformers.models.qwen3_asr import Qwen3ASRForConditionalGeneration
+from transformers.audio_utils import load_audio
+from transformers.models.qwen3_asr import Qwen3ASRForConditionalGeneration, Qwen3ASRProcessor
 
 
 def parse_args() -> argparse.Namespace:

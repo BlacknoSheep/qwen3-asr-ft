@@ -1,22 +1,20 @@
 import argparse
 import os
+
 import torch
 from datasets import load_dataset
+from peft import LoraConfig, get_peft_model
 from transformers import (
     Seq2SeqTrainer,
     Seq2SeqTrainingArguments,
 )
 from transformers.models.qwen3_asr import (
-    Qwen3ASRProcessor,
     Qwen3ASRForConditionalGeneration,
+    Qwen3ASRProcessor,
 )
-from peft import get_peft_model, LoraConfig
 
-from scripts.utils import get_utc_time_str, SAMPLE_RATE
+from scripts.utils import SAMPLE_RATE, get_utc_time_str
 from src.data_manager import SimpleDataManager
-
-with open("./src/qwen3_asr_chat_template_fixed.jinja", "r") as f:
-    CHAT_TEMPLATE = f.read()
 
 
 def parse_args() -> argparse.Namespace:
@@ -65,7 +63,6 @@ def main() -> None:
 
     # ---------------- model ----------------
     processor = Qwen3ASRProcessor.from_pretrained(args.model_name, local_files_only=True)
-    processor.chat_template = CHAT_TEMPLATE
     model = Qwen3ASRForConditionalGeneration.from_pretrained(
         args.model_name,
         dtype=dtype,

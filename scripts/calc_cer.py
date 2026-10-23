@@ -14,7 +14,6 @@ from transformers.models.qwen3_asr import (
 
 from scripts.utils import SAMPLE_RATE
 
-
 NON_LANGUAGE_RE = re.compile(r"[^\p{L}\p{N}]+")
 
 
@@ -118,7 +117,7 @@ def prepare_eval_conversation(
 
 
 def main() -> None:
-    from src.data_manager import CHAT_TEMPLATE, SimpleDataManager
+    from src.data_manager import SimpleDataManager
 
     args = parse_args()
     torch.manual_seed(args.seed)
@@ -181,7 +180,6 @@ def main() -> None:
 
         inputs: Any = processor.apply_chat_template(
             conversations,
-            chat_template=CHAT_TEMPLATE,
             tokenize=True,
             add_generation_prompt=True,
             return_dict=True,

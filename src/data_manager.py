@@ -1,25 +1,15 @@
 from dataclasses import dataclass
+from typing import Any
 
-from typing import Any, Dict, List
-
-import numpy as np
-import regex
 import torch
 from datasets import Audio, Dataset
 from transformers.models.qwen3_asr import Qwen3ASRProcessor
 
 from .utils import (
-    normalize_text,
-    normalize_language,
     build_messages,
-    generate_assistant_masks,
+    normalize_language,
+    normalize_text,
 )
-
-NON_TEXT_RE = regex.compile(r"[^\p{L}\p{N}]+")
-WHITESPACE_RE = regex.compile(r"\s+")
-
-with open("./src/qwen3_asr_chat_template_fixed.jinja", "r") as f:
-    CHAT_TEMPLATE = f.read()
 
 
 @dataclass
@@ -31,56 +21,23 @@ class SimpleCollator:
         self.processor = processor
         self.dtype = dtype
 
-        assistant_start = "<|im_start|>assistant\n"
-        assistant_end = "<|im_end|>"
-        self.assistant_start_ids = self.processor.tokenizer.encode(
-            assistant_start,
-            return_tensors="pt",
-            add_special_tokens=False,
-        )
-        self.assistant_end_ids = self.processor.tokenizer.encode(
-            assistant_end,
-            return_tensors="pt",
-            add_special_tokens=False,
-        )
-
-    def __call__(self, features: List[Dict[str, Any]]) -> Dict[str, torch.Tensor]:
-        messages = []
+    def __call__(self, features: list[dict[str, Any]]) -> dict[str, torch.Tensor]:
+        messages_batch = []
         for feature in features:
-            conversation = []
-            for message in feature["messages"]:
-                message = dict(message)
-                content = message.get("content")
-                if isinstance(content, list):
-                    content = [dict(block) if isinstance(block, dict) else block for block in content]
-                    for block in content:
-                        if (
-                            isinstance(block, dict)
-                            and block.get("type") == "audio"
-                            and isinstance(block.get("audio"), list)
-                        ):
-                            # datasets serializes the ndarray produced by _normalize as
-                            # a Python list. Qwen3ASRProcessor.load_audio does not accept
-                            # lists, so restore the representation expected by it.
-                            block["audio"] = np.asarray(block["audio"], dtype=np.float32)
-                    message["content"] = content
-                conversation.append(message)
-            messages.append(conversation)
+            audio = feature["audio"].get_all_samples().data[0].numpy()
+            messages = build_messages(audio, feature["language"], feature["transcription"])
+            messages_batch.append(messages)
 
         inputs: Any = self.processor.apply_chat_template(
-            messages,
-            chat_template=CHAT_TEMPLATE,
-            tokenize=True,
-            return_dict=True,
+            messages_batch, tokenize=True, return_dict=True, return_assistant_tokens_mask=True, return_tensors="pt"
         )
         labels = inputs.input_ids.clone()
-        assistant_masks = generate_assistant_masks(labels, self.assistant_start_ids, self.assistant_end_ids)
-        labels[assistant_masks == 0] = -100
+        labels[inputs.assistant_masks == 0] = -100
         return {
             "input_ids": inputs.input_ids,
             "attention_mask": inputs.attention_mask,
             "input_features": inputs.input_features.to(self.dtype),
-            "input_features_mask": inputs.input_features_mask.to(self.dtype),
+            "input_features_mask": inputs.input_features_mask,
             "labels": labels,
         }
 
@@ -103,21 +60,20 @@ class SimpleDataManager:
         self.processor = processor
         self.samplerate = samplerate
 
-    def _normalize(self, example: Dict[str, Any]) -> Dict[str, Any]:
-        audio = example["audio"]["array"]
-        language = normalize_language(example["language"])
-        text = normalize_text(example["transcription"])
-        messages = build_messages(audio, language, text)
-        return {"messages": messages}
+    @staticmethod
+    def _normalize(example: dict[str, Any]) -> dict[str, Any]:
+        return {
+            "language": normalize_language(example["language"]),
+            "transcription": normalize_text(example["transcription"]),
+        }
 
     def get_dataset(self) -> Dataset:
         """
-        返回的数据集包含以下列：["messages"]，具体处理延迟到 collator 便于 batch 和 pad
+        返回的数据集至少包含以下列：["audio", "language", "transcription"]，具体处理延迟到 collator 便于 batch 和 pad
         """
-        self.dataset = self.dataset.cast_column("audio", Audio(sampling_rate=self.samplerate))
+        self.dataset = self.dataset.cast_column("audio", Audio(sampling_rate=self.samplerate, num_channels=1))
         self.dataset = self.dataset.map(
             self._normalize,
-            remove_columns=self.dataset.column_names,
             load_from_cache_file=False,
         )
         return self.dataset

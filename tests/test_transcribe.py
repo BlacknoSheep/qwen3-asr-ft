@@ -7,21 +7,18 @@ from transformers.models.qwen3_asr import Qwen3ASRForConditionalGeneration, Qwen
 
 def main() -> None:
     parser = argparse.ArgumentParser(description="Qwen3-ASR 音频转写")
-    parser.add_argument("--model_name", required=True, help="Hugging Face 模型名称或本地模型路径")
-    parser.add_argument("--audio_path", required=True, help="音频文件路径")
-    parser.add_argument("--language", default="none", help="语言，例如 zh、en；默认 none 自动识别")
+    parser.add_argument("--model_name", default="Qwen/Qwen3-ASR-0.6B-hf")
+    parser.add_argument("--audio_path", default="./tests/test.wav")
+    parser.add_argument("--language", type=str, default="Chinese")
     args = parser.parse_args()
 
     language = None if args.language.lower() == "none" else args.language
     device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
     dtype = torch.bfloat16 if device.type == "cuda" else torch.float32
 
-    processor = Qwen3ASRProcessor.from_pretrained(args.model_name)
+    processor = Qwen3ASRProcessor.from_pretrained(args.model_name, local_files_only=True)
     model = Qwen3ASRForConditionalGeneration.from_pretrained(
-        args.model_name,
-        dtype=dtype,
-        device_map=device,
-        attn_implementation="sdpa",
+        args.model_name, dtype=dtype, device_map=device, attn_implementation="sdpa", local_files_only=True
     ).eval()
 
     audio = load_audio(args.audio_path, sampling_rate=16000)
