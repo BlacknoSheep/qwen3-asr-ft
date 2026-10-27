@@ -9,6 +9,7 @@ dependencies = [
     "datasets>=5.1.0",
     "evaluate>=0.4.6",
     "librosa>=1.0.0",
+    "numpy>=2.4.6",
     "onnxruntime>=1.31.0",
     "peft>=0.21.2",
     "silero-vad>=6.2.3",

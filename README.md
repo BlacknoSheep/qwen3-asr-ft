@@ -69,6 +69,23 @@ python -m scripts.srt2dataset \
 
 至少包含`audio`，`language`，`transcription`这三列，例如：https://huggingface.co/datasets/KYOU-0/Ace-Taffy-voice
 
+### ASR 探测边界生成字幕
+
+`generate_srt3.py` 先用 0.5 秒短窗 ASR 的空白转录切分，再对完整片段重新转录。
+默认前后各扩展 0.25 秒，相邻片段不重叠；超过 30 秒的片段优先在低能量处切开。
+两个阶段复用同一个模型，分别使用 512 和 8 的 batch 大小。
+
+```bash
+uv run python -m scripts.generate_srt3 \
+  --audio_path ./tmp/audio.wav \
+  --output_path ./outputs/data/audio.srt \
+  --language zh
+```
+
+默认只生成 SRT，跳过空白正式转录。添加 `--debug` 可额外导出 `audio.debug.json`，
+包含短窗转录、原始片段及最终转录结果；边界均为 16kHz 音频的采样点，左闭右开。
+可通过 `--probe_batch_size`、`--batch_size`、`--resolution_s`、`--padding_s`、`--max_segment_s` 调整参数。
+
 # 微调
 
 1. 微调 lora
