@@ -1,5 +1,6 @@
 """
 生成 srt 字幕文件
+通过滑动窗口重置 vad 状态，漏检率更低
 """
 
 import argparse
