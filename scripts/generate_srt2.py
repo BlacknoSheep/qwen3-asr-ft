@@ -15,7 +15,7 @@ from transformers.models.qwen3_asr import Qwen3ASRForConditionalGeneration, Qwen
 
 def parse_args() -> argparse.Namespace:
     parser = argparse.ArgumentParser(prog="generate_srt")
-    parser.add_argument("--model_name", type=str)
+    parser.add_argument("--model_name", type=str, default="Qwen/Qwen3-ASR-1.7B-hf")
     parser.add_argument("--audio_path", type=str)
     parser.add_argument("--output_path", type=str)
     parser.add_argument("--language", type=str, default="none", help="none for None")
