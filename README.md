@@ -49,7 +49,8 @@ hf download Qwen/Qwen3-ASR-0.6B-hf
 # 1. 生成 srt 字幕文件
 # generate_srt.py：完整音频送入 vad，容易漏
 # generate_srt2.py：重叠窗口切分 + 识别 + 合并，更不容易漏，但是少数片段会被从中间切开
-python -m scripts.generate_srt2 \
+# generate_srt3.py：先用 resolution_s （默认 0.5s）的短窗进行 ASR，然后根据空白转录进行切分，最后对完整片段重新转录。漏检率最低。
+python -m scripts.generate_srt3 \
   --model_name="Qwen/Qwen3-ASR-1.7B-hf" \
   --audio_path="./tmp/audio.wav" \
   --output_path="./outputs/data/audio.srt" \
@@ -69,23 +70,6 @@ python -m scripts.srt2dataset \
 
 至少包含`audio`，`language`，`transcription`这三列，例如：https://huggingface.co/datasets/KYOU-0/Ace-Taffy-voice
 
-### ASR 探测边界生成字幕
-
-`generate_srt3.py` 先用 0.5 秒短窗 ASR 的空白转录切分，再对完整片段重新转录。
-默认前后各扩展 0.25 秒，相邻片段不重叠；超过 30 秒的片段优先在低能量处切开。
-两个阶段复用同一个模型，分别使用 512 和 8 的 batch 大小。
-
-```bash
-uv run python -m scripts.generate_srt3 \
-  --audio_path ./tmp/audio.wav \
-  --output_path ./outputs/data/audio.srt \
-  --language zh
-```
-
-默认只生成 SRT，跳过空白正式转录。添加 `--debug` 可额外导出 `audio.debug.json`，
-包含短窗转录、原始片段及最终转录结果；边界均为 16kHz 音频的采样点，左闭右开。
-可通过 `--probe_batch_size`、`--batch_size`、`--resolution_s`、`--padding_s`、`--max_segment_s` 调整参数。
-
 # 微调
 
 1. 微调 lora
@@ -101,10 +85,11 @@ python -m scripts.simple_lora \
 ```
 
 注意：
-   - 为了充分利用样本，确保 `per_device_train_batch_size` × `gradient_accumulation_steps` × `max_steps` >= 样本数量
-     - 默认 `max_steps=50`，步数过多会过拟合
-   - 默认 `rank=16` ，可根据样本数量适当调整
-   - 显存不足时可以降低 `per_device_train_batch_size` 和 `rank`
+
+- 为了充分利用样本，确保 `per_device_train_batch_size` × `gradient_accumulation_steps` × `max_steps` >= 样本数量
+  - 默认 `max_steps=50`，步数过多会过拟合
+- 默认 `rank=16` ，可根据样本数量适当调整
+- 显存不足时可以降低 `per_device_train_batch_size` 和 `rank`
 
 2. 合并 lora 到主模型
 
