@@ -49,22 +49,25 @@ hf download Qwen/Qwen3-ASR-0.6B-hf
 # 1. 生成 srt 字幕文件
 # generate_srt.py：完整音频送入 vad，容易漏
 # generate_srt2.py：重叠窗口切分 + 识别 + 合并，更不容易漏，但是少数片段会被从中间切开
-# generate_srt3.py：先用 resolution_s （默认 0.5s）的短窗进行 ASR，然后根据空白转录进行切分，最后对完整片段重新转录。漏检率最低。
-python -m scripts.generate_srt3 \
+python -m scripts.generate_srt2 \
   --model_name="Qwen/Qwen3-ASR-1.7B-hf" \
   --audio_path="./tmp/audio.wav" \
   --output_path="./outputs/data/audio.srt" \
   --language="zh"
 
-# 2. 使用 Aegisub 等软件对字幕进行校对
+# 2. 使用 Aegisub 等软件对字幕进行校对（注意保留空白片段以减少模型幻觉）
 
 # 3. 生成数据集
+# 可以用 --system_prompt 参数添加系统提示词，可以用作触发词，一般用不上
 python -m scripts.srt2dataset \
   --srt_path="./outputs/data/audio.srt" \
   --audio_path="./tmp/audio.wav" \
   --output_dir="./outputs/data" \
   --language="zh"
 ```
+
+- generate_srt3.py：先用 resolution_s （默认 0.5s）的短窗进行 ASR，然后根据空白转录进行切分，最后对完整片段重新转录。漏检率最低。
+  - **注意： 原版 qwen3-asr 幻觉严重，无法准确识别空白，必须使用微调后的模型**
 
 2. huggingface dataset
 

@@ -19,6 +19,7 @@ def parse_args() -> argparse.Namespace:
     parser.add_argument("--audio_path", type=str)
     parser.add_argument("--output_path", type=str)
     parser.add_argument("--language", type=str, default="none", help="none for None")
+    parser.add_argument("--system_prompt", type=str, default=None, help="可选的系统提示，例如热词")
     parser.add_argument("--attn_implementation", type=str, default="sdpa")
     parser.add_argument("--batch_size", type=int, default=8)
     parser.add_argument("--vad_window_s", type=float, default=30.0)
@@ -168,6 +169,7 @@ def main():
 
             inputs = processor.apply_transcription_request(
                 audio=batch_segments,
+                prompt=[args.system_prompt] * len(batch_segments),
                 language=[args.language] * len(batch_segments),  # type:ignore
             ).to(model.device, model.dtype)
             with torch.inference_mode():

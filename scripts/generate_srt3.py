@@ -20,8 +20,9 @@ def parse_args() -> argparse.Namespace:
     parser.add_argument("--audio_path", type=Path, required=True)
     parser.add_argument("--output_path", type=Path, required=True)
     parser.add_argument("--language", default="none", help="none 表示自动识别语言")
+    parser.add_argument("--system_prompt", type=str, default=None, help="可选的系统提示，例如热词")
     parser.add_argument("--attn_implementation", default="sdpa")
-    parser.add_argument("--resolution_s", type=float, default=0.5)
+    parser.add_argument("--resolution_s", type=float, default=0.25)
     parser.add_argument("--probe_batch_size", type=int, default=512)
     parser.add_argument("--probe_max_new_tokens", type=int, default=64)
     parser.add_argument("--batch_size", type=int, default=8, help="完整片段转录的 batch 大小")
@@ -65,6 +66,7 @@ def transcribe(
     language: str | None,
     max_new_tokens: int,
     desc: str,
+    system_prompt: str | None = None,
     sort_by_length: bool = False,
 ) -> list[str]:
     """按需按长度分批，返回与输入片段顺序一致的文本。"""
@@ -77,6 +79,7 @@ def transcribe(
         with torch.inference_mode():
             inputs = processor.apply_transcription_request(
                 audio=[audio[intervals[i][0] : intervals[i][1]] for i in indices],
+                prompt=[system_prompt] * len(indices),
                 language=language,
             ).to(model.device, model.dtype)
             output_ids = model.generate(**inputs, max_new_tokens=max_new_tokens, do_sample=False)
@@ -179,6 +182,7 @@ def main():
         language=args.language,
         max_new_tokens=args.probe_max_new_tokens,
         desc="探测边界",
+        system_prompt=args.system_prompt,
     )
     records = [(start, end, text) for (start, end), text in zip(windows, probe_texts, strict=True)]
     raw_segments = find_segments(records)
@@ -195,6 +199,7 @@ def main():
         language=args.language,
         max_new_tokens=args.max_new_tokens,
         desc="完整片段转录",
+        system_prompt=args.system_prompt,
         sort_by_length=True,
     )
     counter = write_srt(args.output_path, segments, texts)

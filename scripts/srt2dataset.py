@@ -20,6 +20,7 @@ def parse_args() -> argparse.Namespace:
     parser.add_argument("--output_dir", type=str)
     parser.add_argument("--language", type=str)
     parser.add_argument("--sample_rate", type=int, default=16000)
+    parser.add_argument("--system_prompt", type=str, default=None, help="可选的系统提示，用于在训练时提供上下文信息")
     parser.add_argument("--metadata_only", action="store_true", help="仅生成 metadata.jsonl，不切分音频")
     return parser.parse_args()
 
@@ -82,6 +83,7 @@ def build_dataset(
     language: str,
     sample_rate: int,
     metadata_only: bool = False,
+    system_prompt: str | None = None,
 ) -> None:
     subtitles = parse_srt(srt_path)
     if not subtitles:
@@ -114,6 +116,8 @@ def build_dataset(
                 "start_time": subtitle.start,
                 "end_time": subtitle.end,
             }
+            if system_prompt is not None:
+                record["system_prompt"] = system_prompt
             f.write(json.dumps(record, ensure_ascii=False) + "\n")
 
 
@@ -126,6 +130,7 @@ def main() -> None:
         language=args.language,
         sample_rate=args.sample_rate,
         metadata_only=args.metadata_only,
+        system_prompt=args.system_prompt,
     )
 
 

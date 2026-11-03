@@ -25,7 +25,7 @@ class SimpleCollator:
         messages_batch = []
         for feature in features:
             audio = feature["audio"].get_all_samples().data[0].numpy()
-            messages = build_messages(audio, feature["language"], feature["transcription"])
+            messages = build_messages(audio, feature["language"], feature["transcription"], feature.get("system_prompt", None))
             messages_batch.append(messages)
 
         inputs: Any = self.processor.apply_chat_template(
@@ -62,9 +62,13 @@ class SimpleDataManager:
 
     @staticmethod
     def _normalize(example: dict[str, Any]) -> dict[str, Any]:
+        system_prompt = example.get("system_prompt", None)
+        if system_prompt is not None:
+            system_prompt = normalize_text(system_prompt)
         return {
             "language": normalize_language(example["language"]),
             "transcription": normalize_text(example["transcription"]),
+            "system_prompt": system_prompt,
         }
 
     def get_dataset(self) -> Dataset:
