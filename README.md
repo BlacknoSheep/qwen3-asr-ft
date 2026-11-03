@@ -58,7 +58,7 @@ python -m scripts.generate_srt2 \
 # 2. 使用 Aegisub 等软件对字幕进行校对（注意保留空白片段以减少模型幻觉）
 
 # 3. 生成数据集
-# 可以用 --system_prompt 参数添加系统提示词，可以用作触发词，一般用不上
+# 可以用 --system_prompt 参数添加系统提示词，可以用作触发词（例如：`--system_prompt="Speaker: taffy."`），一般用不上
 python -m scripts.srt2dataset \
   --srt_path="./outputs/data/audio.srt" \
   --audio_path="./tmp/audio.wav" \
