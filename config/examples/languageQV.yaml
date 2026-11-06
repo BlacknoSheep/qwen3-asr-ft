@@ -1,0 +1,35 @@
+name: "languageQV" # outputs will be saved to <output_dir>/<name>
+output_dir: "outputs/lora"
+
+model_config:
+  model_name_or_path: "Qwen/Qwen3-ASR-1.7B-hf"
+  attn_implementation: sdpa
+  local_files_only: true
+
+data_config:
+  # hf dataset or json/jsonl file
+  # json/jsonl 文件中的路径为从该文件所在目录开始的相对路径
+  data_file: "KYOU-0/Ace-Taffy-voice"
+  load_from_cache_file: true # ！！！如果修改了数据处理的代码，务必改为 False 重新生成一次缓存
+  num_proc: 8
+
+# pass to peft.LoraConfig()
+lora_config:
+  r: 16
+  lora_alpha: 16
+  target_modules: "^model\\.language_model\\..*\\.(q_proj|v_proj)$"
+
+# pass to Seq2SeqTrainingArguments
+training_args:
+  learning_rate: 1.0e-4
+  lr_scheduler_type: cosine
+  weight_decay: 0.0
+  max_steps: 100
+  logging_steps: 0.01
+  warmup_steps: 0.1
+  save_steps: 0.2
+  save_total_limit: 2
+  per_device_train_batch_size: 2
+  gradient_accumulation_steps: 16
+  gradient_checkpointing: true
+  seed: 1883

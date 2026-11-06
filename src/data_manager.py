@@ -25,7 +25,12 @@ class SimpleCollator:
         messages_batch = []
         for feature in features:
             audio = feature["audio"].get_all_samples().data[0].numpy()
-            messages = build_messages(audio, feature["language"], feature["transcription"], feature.get("system_prompt", None))
+            messages = build_messages(
+                audio,
+                feature["language"],
+                feature["transcription"],
+                feature.get("system_prompt", None),
+            )
             messages_batch.append(messages)
 
         inputs: Any = self.processor.apply_chat_template(
@@ -65,21 +70,26 @@ class SimpleDataManager:
         system_prompt = example.get("system_prompt", None)
         if system_prompt is not None:
             system_prompt = normalize_text(system_prompt)
+            return {
+                "language": normalize_language(example["language"]),
+                "transcription": normalize_text(example["transcription"]),
+                "system_prompt": normalize_text(system_prompt),
+            }
         return {
             "language": normalize_language(example["language"]),
             "transcription": normalize_text(example["transcription"]),
-            "system_prompt": system_prompt,
         }
 
-    def get_dataset(self) -> Dataset:
+    def get_dataset(self, load_from_cache_file=True, num_proc: int | None = None) -> Dataset:
         """
         返回的数据集至少包含以下列：["audio", "language", "transcription"]，具体处理延迟到 collator 便于 batch 和 pad
         """
-        self.dataset = self.dataset.cast_column("audio", Audio(sampling_rate=self.samplerate, num_channels=1))
         self.dataset = self.dataset.map(
             self._normalize,
-            load_from_cache_file=False,
+            load_from_cache_file=load_from_cache_file,
+            num_proc=num_proc,
         )
+        self.dataset = self.dataset.cast_column("audio", Audio(sampling_rate=self.samplerate, num_channels=1))
         return self.dataset
 
     def get_collator(self, dtype: torch.dtype):

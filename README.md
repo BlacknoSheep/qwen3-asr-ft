@@ -32,6 +32,8 @@ hf download Qwen/Qwen3-ASR-0.6B-hf
 
 # 数据集
 
+- 文本中 () [] <> 中的内容会被删除
+
 1. jsonl 数据
 
 类似以下格式，其中`audio`字段是音频路径（相对于该 jsonl 文件）
@@ -66,8 +68,9 @@ python -m scripts.srt2dataset \
   --language="zh"
 ```
 
-- generate_srt3.py：先用 resolution_s （默认 0.5s）的短窗进行 ASR，然后根据空白转录进行切分，最后对完整片段重新转录。漏检率最低。
+- `generate_srt3.py`：先用 `resolution_s` （默认 0.25s）的短窗进行 ASR，然后根据空白转录进行切分，最后对完整片段重新转录。漏检率最低。
   - **注意： 原版 qwen3-asr 幻觉严重，无法准确识别空白，必须使用微调后的模型**
+  - 微调后的模型幻觉更少，且较固定，一般为 `"system"` 和系统提示词，可通过 `--ignore_regex` 参数进行过滤（`regex.fullmatch()`），例如 `--ignore_regex="system|Speaker: taffy.*"`
 
 2. huggingface dataset
 
@@ -78,19 +81,13 @@ python -m scripts.srt2dataset \
 1. 微调 lora
 
 ```bash
-python -m scripts.simple_lora \
-  --name="1.7b" \
-  --output_dir="./outputs/lora" \
-  --model_name="Qwen/Qwen3-ASR-1.7B-hf" \
-  --data_file="./outputs/data/metadata.jsonl"
-
-# hf 数据集：--data_file="KYOU-0/Ace-Taffy-voice"
+python -m scripts.simple_lora config/examples/languageQV.yaml
 ```
 
 注意：
 
 - 为了充分利用样本，确保 `per_device_train_batch_size` × `gradient_accumulation_steps` × `max_steps` >= 样本数量
-  - 默认 `max_steps=50`，步数过多会过拟合
+  - 默认 `max_steps=100`，步数过多会过拟合
 - 默认 `rank=16` ，可根据样本数量适当调整
 - 显存不足时可以降低 `per_device_train_batch_size` 和 `rank`
 
@@ -99,14 +96,14 @@ python -m scripts.simple_lora \
 ```bash
 python -m scripts.merge_lora \
   --base_model="Qwen/Qwen3-ASR-1.7B-hf" \
-  --lora_model="./outputs/lora/1.7b/checkpoint-50" \
-  --output_path="./outputs/merged/1.7b"
+  --lora_model="./outputs/lora/languageQV/checkpoint-100" \
+  --output_path="./outputs/merged/languageQV"
 ```
 
 # 结果
 
 ```bash
-python -m scripts.calc_cer --model_name="./outputs/merged/1.7b" --data_file="./outputs/data/metadata.jsonl"
+python -m scripts.calc_cer --model_name="./outputs/merged/languageQV" --data_file="./outputs/data/metadata.jsonl"
 ```
 
 - CER，去除空白、标点、特殊符号
@@ -121,7 +118,7 @@ python -m scripts.calc_cer --model_name="./outputs/merged/1.7b" --data_file="./o
 # 推理
 
 ```bash
-python tests/test_transcribe.py   --model_name="./outputs/merged/1.7b"   --audio_path="./tests/test.wav"   --language="zh"
+python tests/test_transcribe.py   --model_name="./outputs/merged/languageQV"   --audio_path="./tests/test.wav"   --language="zh"
 ```
 
 ## vllm
@@ -131,7 +128,7 @@ uv sync --extra vllm
 
 # WSL2 中，必须设置 VLLM_WSL2_ENABLE_PIN_MEMORY=1 才能启动 vllm
 # 启动耗时较长，最后一行输出 `Application startup complete.` 表明启动成功
-export VLLM_WSL2_ENABLE_PIN_MEMORY=1 && vllm serve "./outputs/merged/1.7b" \
+export VLLM_WSL2_ENABLE_PIN_MEMORY=1 && vllm serve "./outputs/merged/languageQV" \
   --served-model-name qwen3-asr \
   --max-model-len 1024 \
   --max-num-seqs 1 \

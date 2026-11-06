@@ -100,7 +100,7 @@ def main() -> None:
         processor=processor,
         samplerate=SAMPLE_RATE,
     )
-    dataset = dm.get_dataset()
+    dataset = dm.get_dataset(num_proc=args.num_proc)
 
     # 不能使用训练 collator：它的 input_ids 包含 assistant 标签，会导致答案泄漏。
     batch_size = args.batch_size

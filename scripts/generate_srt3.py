@@ -6,7 +6,9 @@ import math
 from pathlib import Path
 
 import numpy as np
+import regex
 import torch
+from regex import Pattern
 from tqdm import tqdm
 from transformers.audio_utils import load_audio
 from transformers.models.qwen3_asr import Qwen3ASRForConditionalGeneration, Qwen3ASRProcessor
@@ -21,6 +23,7 @@ def parse_args() -> argparse.Namespace:
     parser.add_argument("--output_path", type=Path, required=True)
     parser.add_argument("--language", default="none", help="none 表示自动识别语言")
     parser.add_argument("--system_prompt", type=str, default=None, help="可选的系统提示，例如热词")
+    parser.add_argument("--ignore_regex", type=str, default=None, help="将 regex.fullmatch() 匹配的文本置空")
     parser.add_argument("--attn_implementation", default="sdpa")
     parser.add_argument("--resolution_s", type=float, default=0.25)
     parser.add_argument("--probe_batch_size", type=int, default=512)
@@ -68,6 +71,7 @@ def transcribe(
     desc: str,
     system_prompt: str | None = None,
     sort_by_length: bool = False,
+    ignore_regex: Pattern | None = None,
 ) -> list[str]:
     """按需按长度分批，返回与输入片段顺序一致的文本。"""
     results = [""] * len(intervals)
@@ -89,7 +93,9 @@ def transcribe(
         del inputs, output_ids, generated_ids
         for index, text in zip(indices, texts, strict=True):
             text = text.strip()
-            results[index] = "" if text == "system" else text
+            if ignore_regex is not None and ignore_regex.fullmatch(text):
+                text = ""
+            results[index] = text
     return results
 
 
@@ -166,8 +172,7 @@ def write_srt(path: Path, segments: list[tuple[int, int]], texts: list[str]) -> 
 
 def main():
     args = parse_args()
-    if args.audio_path.resolve() == args.output_path.resolve():
-        raise ValueError("音频和 SRT 必须使用不同路径")
+    ignore_regex: Pattern | None = regex.compile(args.ignore_regex) if args.ignore_regex else None
     args.output_path.parent.mkdir(parents=True, exist_ok=True)
     audio = load_audio(str(args.audio_path), sampling_rate=SAMPLE_RATE)
     processor, model = load_model(args)
@@ -183,6 +188,7 @@ def main():
         max_new_tokens=args.probe_max_new_tokens,
         desc="探测边界",
         system_prompt=args.system_prompt,
+        ignore_regex=ignore_regex,
     )
     records = [(start, end, text) for (start, end), text in zip(windows, probe_texts, strict=True)]
     raw_segments = find_segments(records)
@@ -201,6 +207,7 @@ def main():
         desc="完整片段转录",
         system_prompt=args.system_prompt,
         sort_by_length=True,
+        ignore_regex=ignore_regex,
     )
     counter = write_srt(args.output_path, segments, texts)
     if args.debug:

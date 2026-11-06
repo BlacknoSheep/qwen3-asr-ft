@@ -8,8 +8,7 @@ def normalize_text(text: str) -> str:
     # qwen支持全角和大小写
     # text = unicodedata.normalize("NFKC", text) # 全角半角统一
     # text = text.lower()
-    # text = regex.sub(r"[<\[][^>\]]*[>\]]", "", text)  # remove words between brackets
-    # text = regex.sub(r"\(([^)]+?)\)", "", text)  # remove words between parenthesis
+    text = regex.sub(r"<[^>]*>|\[[^\]]*\]|\([^)]*\)", "", text)  # 删除 () [] <> 中的内容
     text = regex.sub(r"\s+", " ", text)  # 合并空白
     text = text.strip()  # 去首尾空白
     return text
