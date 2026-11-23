@@ -26,25 +26,72 @@ def parse_args() -> argparse.Namespace:
     parser.add_argument("--ignore_regex", type=str, default=None, help="将 regex.fullmatch() 匹配的文本置空")
     parser.add_argument("--attn_implementation", default="sdpa")
     parser.add_argument("--resolution_s", type=float, default=0.25)
+    parser.add_argument("--min_silence_s", type=float, default=0.5, help="连续空文本窗口达到此时长才分段")
     parser.add_argument("--probe_batch_size", type=int, default=512)
     parser.add_argument("--probe_max_new_tokens", type=int, default=64)
     parser.add_argument("--batch_size", type=int, default=8, help="完整片段转录的 batch 大小")
     parser.add_argument("--max_new_tokens", type=int, default=512)
-    parser.add_argument("--padding_s", type=float, default=0.1)
+    parser.add_argument("--padding_s", type=float, default=0.03)
     parser.add_argument("--max_segment_s", type=float, default=30.0)
+    parser.add_argument("--foreground_peak_dbfs", type=float, default=-30.0, help="前景峰值触发阈值（dBFS）")
+    parser.add_argument("--foreground_padding_s", type=float, default=0.15, help="前景区域前后保护时长")
+    parser.add_argument("--foreground_merge_gap_s", type=float, default=0.15, help="保护后前景区域的最大合并间隔")
+    parser.add_argument("--no_foreground_filter", action="store_true", help="关闭低音量背景声过滤")
     parser.add_argument("--debug", action="store_true", help="额外输出 .debug.json 中间结果")
     args = parser.parse_args()
-    for name in ("resolution_s", "max_segment_s"):
+    for name in ("resolution_s", "min_silence_s", "max_segment_s"):
         value = getattr(args, name)
         if not math.isfinite(value) or round(value * SAMPLE_RATE) < 1:
             parser.error(f"{name} 必须为有限值且至少为一个采样点")
-    if not math.isfinite(args.padding_s) or args.padding_s < 0:
-        parser.error("padding_s 必须为有限非负数")
+    for name in ("padding_s", "foreground_padding_s", "foreground_merge_gap_s"):
+        value = getattr(args, name)
+        if not math.isfinite(value) or value < 0:
+            parser.error(f"{name} 必须为有限非负数")
+    if not math.isfinite(args.foreground_peak_dbfs) or args.foreground_peak_dbfs > 0:
+        parser.error("foreground_peak_dbfs 必须为不大于 0 的有限值")
     for name in ("probe_batch_size", "probe_max_new_tokens", "batch_size", "max_new_tokens"):
         if getattr(args, name) < 1:
             parser.error(f"{name} 必须为正整数")
     args.language = None if args.language.lower() == "none" else args.language
     return args
+
+
+def detect_foreground(audio: np.ndarray, peak_dbfs: float, padding: int, merge_gap: int) -> list[tuple[int, int]]:
+    """20ms 帧、10ms 步长；50ms 内至少 3 帧过阈值才产生前景种子。"""
+    hop = round(0.01 * SAMPLE_RATE)
+    frame = 2 * hop
+    if len(audio) < round(0.05 * SAMPLE_RATE):
+        return []
+    # 相邻两个 10ms 块的峰值等于一个 20ms 帧的峰值，避免构造重叠音频副本。
+    blocks = np.pad(audio, (0, (-len(audio)) % hop)).reshape(-1, hop)
+    block_peaks = np.max(np.abs(blocks), axis=1)
+    peaks = np.maximum(block_peaks[:-1], block_peaks[1:])
+    # 只使用完整帧，最后不足 10ms 的尾部由保护区覆盖。
+    peaks = peaks[: (len(audio) - frame) // hop + 1]
+    above = peaks >= 10 ** (peak_dbfs / 20)
+    # 四个相邻帧覆盖 50ms；单个尖峰最多影响两个重叠帧，不足以触发。
+    counts = np.convolve(above.astype(np.int32), np.ones(4, dtype=np.int32), mode="valid")
+    seeds = np.flatnonzero(counts >= 3)
+    intervals = []
+    for index in seeds:
+        start = max(0, int(index) * hop - padding)
+        end = min(len(audio), int(index) * hop + 3 * hop + frame + padding)
+        if intervals and start <= intervals[-1][1] + merge_gap:
+            intervals[-1] = (intervals[-1][0], max(intervals[-1][1], end))
+        else:
+            intervals.append((start, end))
+    return intervals
+
+
+def foreground_window_mask(windows: list[tuple[int, int]], foreground: list[tuple[int, int]]) -> list[bool]:
+    """按时间顺序判断短窗是否与前景区域相交，区间均为左闭右开。"""
+    mask = []
+    index = 0
+    for start, end in windows:
+        while index < len(foreground) and foreground[index][1] <= start:
+            index += 1
+        mask.append(index < len(foreground) and foreground[index][0] < end)
+    return mask
 
 
 def load_model(args):
@@ -99,7 +146,8 @@ def transcribe(
     return results
 
 
-def find_segments(records: list[tuple[int, int, str]]) -> list[tuple[int, int]]:
+def find_segments(records: list[tuple[int, int, str]], min_silence: int) -> list[tuple[int, int]]:
+    """连续空窗达到阈值才分段，片段首尾不包含空窗；时长单位为采样点。"""
     segments = []
     start = None
     end = 0
@@ -108,7 +156,7 @@ def find_segments(records: list[tuple[int, int, str]]) -> list[tuple[int, int]]:
             if start is None:
                 start = window_start
             end = window_end
-        elif start is not None:
+        elif start is not None and window_end - end >= min_silence:
             segments.append((start, end))
             start = None
     if start is not None:
@@ -178,9 +226,18 @@ def main():
     processor, model = load_model(args)
     resolution = round(args.resolution_s * SAMPLE_RATE)
     windows = [(start, min(start + resolution, len(audio))) for start in range(0, len(audio), resolution)]
-    probe_texts = transcribe(
+    foreground = detect_foreground(
         audio,
-        windows,
+        args.foreground_peak_dbfs,
+        round(args.foreground_padding_s * SAMPLE_RATE),
+        round(args.foreground_merge_gap_s * SAMPLE_RATE),
+    )
+    foreground_mask = foreground_window_mask(windows, foreground)
+    selected = [i for i, active in enumerate(foreground_mask) if active or args.no_foreground_filter]
+    print(f"探测窗口: {len(windows)}；低音量过滤: {len(windows) - len(selected)}")
+    selected_texts = transcribe(
+        audio,
+        [windows[i] for i in selected],
         processor,
         model,
         batch_size=args.probe_batch_size,
@@ -190,8 +247,11 @@ def main():
         system_prompt=args.system_prompt,
         ignore_regex=ignore_regex,
     )
+    probe_texts = [""] * len(windows)
+    for index, text in zip(selected, selected_texts, strict=True):
+        probe_texts[index] = text
     records = [(start, end, text) for (start, end), text in zip(windows, probe_texts, strict=True)]
-    raw_segments = find_segments(records)
+    raw_segments = find_segments(records, round(args.min_silence_s * SAMPLE_RATE))
     padding = round(args.padding_s * SAMPLE_RATE)
     max_samples = round(args.max_segment_s * SAMPLE_RATE)
     segments = prepare_segments(audio, raw_segments, padding, max_samples)
@@ -213,7 +273,29 @@ def main():
     if args.debug:
         debug = {
             "sample_rate": SAMPLE_RATE,
-            "windows": [{"start": s, "end": e, "text": t} for s, e, t in records],
+            "min_silence_s": args.min_silence_s,
+            "foreground_filter": {
+                "enabled": not args.no_foreground_filter,
+                "peak_dbfs": args.foreground_peak_dbfs,
+                "frame_s": 0.02,
+                "hop_s": 0.01,
+                "seed_window_s": 0.05,
+                "seed_min_frames": 3,
+                "padding_s": args.foreground_padding_s,
+                "merge_gap_s": args.foreground_merge_gap_s,
+            },
+            "foreground_intervals": foreground,
+            "windows": [
+                {
+                    "start": s,
+                    "end": e,
+                    "text": t,
+                    "peak_dbfs": 20 * math.log10(max(float(np.max(np.abs(audio[s:e]))), 1e-12)),
+                    "foreground": active,
+                    "filtered": not active and not args.no_foreground_filter,
+                }
+                for (s, e, t), active in zip(records, foreground_mask, strict=True)
+            ],
             "raw_segments": raw_segments,
             "segments": [{"start": s, "end": e, "text": t} for (s, e), t in zip(segments, texts, strict=True)],
         }

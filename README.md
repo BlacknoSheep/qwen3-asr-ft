@@ -70,7 +70,8 @@ python -m scripts.srt2dataset \
 
 - `generate_srt3.py`：先用 `resolution_s` （默认 0.25s）的短窗进行 ASR，然后根据空白转录进行切分，最后对完整片段重新转录。漏检率最低。
   - **注意： 原版 qwen3-asr 幻觉严重，无法准确识别空白，必须使用微调后的模型**
-  - 微调后的模型幻觉更少，且较固定，一般为 `"system"` 和系统提示词，可通过 `--ignore_regex` 参数进行过滤（`regex.fullmatch()`），例如 `--ignore_regex="system|Speaker: taffy.*"`
+  - 微调后的模型幻觉更少，且较固定，一般为 `"system"` 和系统提示词，可通过 `--ignore_regex` 参数进行过滤（`regex.fullmatch()`），例如 `--ignore_regex="system|Speaker:.*"`
+  - `--foreground_peak_dbfs` 用于设置前景阈值，过滤低响度片段，默认 30。应根据实际情况调整。
 
 2. huggingface dataset
 
