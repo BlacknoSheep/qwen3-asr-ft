@@ -8,9 +8,9 @@ import re
 from dataclasses import dataclass
 from pathlib import Path
 
-import librosa
 import soundfile as sf
 from tqdm import tqdm
+from transformers.audio_utils import load_audio
 
 
 def parse_args() -> argparse.Namespace:
@@ -89,7 +89,7 @@ def build_dataset(
     if not subtitles:
         raise ValueError(f"No valid subtitles found in {srt_path}.")
 
-    audio, _ = librosa.load(audio_path, sr=sample_rate, mono=True)
+    audio = load_audio(str(audio_path), sampling_rate=sample_rate)
     audio_dir = output_dir / "audio"
     json_path = output_dir / "metadata.jsonl"
     output_dir.mkdir(parents=True, exist_ok=True)
