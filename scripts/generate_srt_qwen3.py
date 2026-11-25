@@ -83,6 +83,24 @@ def detect_foreground(audio: np.ndarray, peak_dbfs: float, padding: int, merge_g
     return intervals
 
 
+def intersect_intervals(speech: list[tuple[int, int]], foreground: list[tuple[int, int]]) -> list[tuple[int, int]]:
+    """对两组有序、互不重叠的左闭右开区间取交集。"""
+    result = []
+    i = j = 0
+    while i < len(speech) and j < len(foreground):
+        speech_start, speech_end = speech[i]
+        foreground_start, foreground_end = foreground[j]
+        start = max(speech_start, foreground_start)
+        end = min(speech_end, foreground_end)
+        if start < end:
+            result.append((start, end))
+        if speech_end <= foreground_end:
+            i += 1
+        if foreground_end <= speech_end:
+            j += 1
+    return result
+
+
 def foreground_window_mask(windows: list[tuple[int, int]], foreground: list[tuple[int, int]]) -> list[bool]:
     """按时间顺序判断短窗是否与前景区域相交，区间均为左闭右开。"""
     mask = []

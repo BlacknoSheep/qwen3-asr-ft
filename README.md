@@ -30,11 +30,19 @@ hf download Qwen/Qwen3-ASR-1.7B-hf
 hf download Qwen/Qwen3-ASR-0.6B-hf
 ```
 
+```bash
+# 如果使用 Nemotron-3-Diarization 作为 vad（generate_srt_n3d.py）
+python - <<'PY'
+from huggingface_hub import snapshot_download
+snapshot_download(repo_id="nvidia/Nemotron-3-Diarization", allow_patterns=["*.safetensors","*.json"])
+PY
+```
+
 # 数据集
 
 - 文本中 () [] <> 中的内容会被删除
 
-1. jsonl 数据
+## jsonl 数据
 
 类似以下格式，其中`audio`字段是音频路径（相对于该 jsonl 文件）
 
@@ -43,35 +51,39 @@ hf download Qwen/Qwen3-ASR-0.6B-hf
 {"audio": "audio/000002.wav", "language": "zh", "transcription": "砰，塔菲出现了"}
 ```
 
-可以使用现有模型生成数据集
+## 使用现有模型生成数据集
+
+1. 生成 srt 字幕文件
+
+- generate_srt_silero_vad.py：silero_vad 打轴
+- generate_srt_n3d.py：使用 Nemotron-3-Diarization 打轴（效果最好！）
+- generate_srt_qwen3：使用 asr 模型以滑动短窗口，通过识别空白进行打轴
+  - 注意原版 qwen3-asr 幻觉严重，无法准确识别空白，最好使用初步微调后的模型
+- 模型幻觉一般为 `"system"` 和系统提示词，可通过 `--ignore_regex` 参数进行过滤（`regex.fullmatch()`），例如 `--ignore_regex="system|Speaker:.*"`
+- `--foreground_peak_dbfs` 用于设置前景阈值，过滤低响度片段，默认 -30.0。应根据实际情况调整。
 
 ```bash
 # --model_name 为 huggingface 模型名称，或者本地模型路径
-
-# 1. 生成 srt 字幕文件
-# generate_srt.py：完整音频送入 vad，容易漏
-# generate_srt2.py：重叠窗口切分 + 识别 + 合并，更不容易漏，但是少数片段会被从中间切开
-python -m scripts.generate_srt2 \
+python -m scripts.generate_srt_n3d \
   --model_name="Qwen/Qwen3-ASR-1.7B-hf" \
-  --audio_path="./tmp/audio.wav" \
+  --audio_path="/path/to/audio" \
   --output_path="./outputs/data/audio.srt" \
-  --language="zh"
-
-# 2. 使用 Aegisub 等软件对字幕进行校对（注意保留空白片段以减少模型幻觉）
-
-# 3. 生成数据集
-# 可以用 --system_prompt 参数添加系统提示词，可以用作触发词（例如：`--system_prompt="Speaker: taffy."`），一般用不上
-python -m scripts.srt2dataset \
-  --srt_path="./outputs/data/audio.srt" \
-  --audio_path="./tmp/audio.wav" \
-  --output_dir="./outputs/data" \
   --language="zh"
 ```
 
-- `generate_srt3.py`：先用 `resolution_s` （默认 0.25s）的短窗进行 ASR，然后根据空白转录进行切分，最后对完整片段重新转录。漏检率最低。
-  - **注意： 原版 qwen3-asr 幻觉严重，无法准确识别空白，必须使用微调后的模型**
-  - 微调后的模型幻觉更少，且较固定，一般为 `"system"` 和系统提示词，可通过 `--ignore_regex` 参数进行过滤（`regex.fullmatch()`），例如 `--ignore_regex="system|Speaker:.*"`
-  - `--foreground_peak_dbfs` 用于设置前景阈值，过滤低响度片段，默认 30。应根据实际情况调整。
+2. 使用 Aegisub 等软件对字幕进行校对
+
+3. 生成数据集
+
+- 可以用 --system_prompt 参数添加系统提示词，可以用作触发词（例如：`--system_prompt="Speaker: taffy."`），一般用不上
+
+```python
+python -m scripts.srt2dataset \
+  --srt_path="./outputs/data/audio.srt" \
+  --audio_path="/path/to/audio" \
+  --output_dir="./outputs/data" \
+  --language="zh"
+```
 
 2. huggingface dataset
 
@@ -82,7 +94,7 @@ python -m scripts.srt2dataset \
 1. 微调 lora
 
 ```bash
-python -m scripts.simple_lora config/examples/languageQV.yaml
+python -m scripts.simple_lora config/examples/allQKVO_proj.yaml
 ```
 
 注意：
@@ -97,17 +109,18 @@ python -m scripts.simple_lora config/examples/languageQV.yaml
 ```bash
 python -m scripts.merge_lora \
   --base_model="Qwen/Qwen3-ASR-1.7B-hf" \
-  --lora_model="./outputs/lora/languageQV/checkpoint-100" \
-  --output_path="./outputs/merged/languageQV"
+  --lora_model="./outputs/lora/allQKVO_proj/checkpoint-100" \
+  --output_path="./outputs/merged/allQKVO_proj"
 ```
 
 # 结果
 
 ```bash
-python -m scripts.calc_cer --model_name="./outputs/merged/languageQV" --data_file="./outputs/data/metadata.jsonl"
+python -m scripts.calc_cer --model_name="./outputs/merged/allQKVO_proj" --data_file="./outputs/data/metadata.jsonl"
 ```
 
-- CER，去除空白、标点、特殊符号
+- 使用 `KYOU-0/Ace-Taffy-voice` 进行微调，以 2026-09-25-11_30min（未公开）作为测试集
+- 计算 CER，去除空白、标点、特殊符号
 
 | model                  | KYOU-0/Ace-Taffy-voice | 2026-09-25-11_30min |
 | :--------------------- | ---------------------: | ------------------: |
@@ -119,17 +132,17 @@ python -m scripts.calc_cer --model_name="./outputs/merged/languageQV" --data_fil
 # 推理
 
 ```bash
-python tests/test_transcribe.py   --model_name="./outputs/merged/languageQV"   --audio_path="./tests/test.wav"   --language="zh"
+python tests/test_transcribe.py   --model_name="./outputs/merged/allQKVO_proj"   --audio_path="./tests/test.wav"   --language="zh"
 ```
 
 ## vllm
 
 ```bash
-uv sync --extra vllm
+uv pip install vllm[audio]
 
 # WSL2 中，必须设置 VLLM_WSL2_ENABLE_PIN_MEMORY=1 才能启动 vllm
 # 启动耗时较长，最后一行输出 `Application startup complete.` 表明启动成功
-export VLLM_WSL2_ENABLE_PIN_MEMORY=1 && vllm serve "./outputs/merged/languageQV" \
+export VLLM_WSL2_ENABLE_PIN_MEMORY=1 && vllm serve "./outputs/merged/allQKVO_proj" \
   --served-model-name qwen3-asr \
   --max-model-len 1024 \
   --max-num-seqs 1 \

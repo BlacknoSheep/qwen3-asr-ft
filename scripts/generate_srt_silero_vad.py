@@ -4,13 +4,17 @@
 """
 
 import argparse
+import math
 from pathlib import Path
 
+import regex
 import torch
 from silero_vad import get_speech_timestamps, load_silero_vad
 from tqdm import tqdm
 from transformers.audio_utils import load_audio
 from transformers.models.qwen3_asr import Qwen3ASRForConditionalGeneration, Qwen3ASRProcessor
+
+from scripts.generate_srt_qwen3 import SAMPLE_RATE, detect_foreground, intersect_intervals
 
 
 def parse_args() -> argparse.Namespace:
@@ -20,15 +24,27 @@ def parse_args() -> argparse.Namespace:
     parser.add_argument("--output_path", type=str)
     parser.add_argument("--language", type=str, default="none", help="none for None")
     parser.add_argument("--system_prompt", type=str, default=None, help="可选的系统提示，例如热词")
+    parser.add_argument("--ignore_regex", help="跳过 regex.fullmatch() 匹配的字幕")
     parser.add_argument("--attn_implementation", type=str, default="sdpa")
     parser.add_argument("--batch_size", type=int, default=8)
     parser.add_argument("--vad_window_s", type=float, default=30.0)
     parser.add_argument("--vad_overlap_s", type=float, default=5.0)
+    parser.add_argument("--foreground_peak_dbfs", type=float, default=-30.0, help="前景峰值触发阈值（dBFS）")
+    parser.add_argument("--foreground_padding_s", type=float, default=0.15, help="前景区域前后保护时长")
+    parser.add_argument("--foreground_merge_gap_s", type=float, default=0.15, help="保护后前景区域的最大合并间隔")
+    parser.add_argument("--no_foreground_filter", action="store_true", help="关闭低音量背景声过滤")
 
-    return parser.parse_args()
+    args = parser.parse_args()
+    if not math.isfinite(args.foreground_peak_dbfs) or args.foreground_peak_dbfs > 0:
+        parser.error("foreground_peak_dbfs 必须为不大于 0 的有限值")
+    for name in ("foreground_padding_s", "foreground_merge_gap_s"):
+        value = getattr(args, name)
+        if not math.isfinite(value) or value < 0:
+            parser.error(f"{name} 必须为有限非负数")
+    return args
 
 
-samplerate = 16000
+samplerate = SAMPLE_RATE
 
 # vad
 threshold = 0.2
@@ -127,10 +143,11 @@ def get_speech_timestamps_chunked(
 
 def main():
     args = parse_args()
+    ignore_regex = regex.compile(args.ignore_regex) if args.ignore_regex else None
     if args.language.lower() == "none":
         args.language = None
 
-    vad = load_silero_vad(onnx=True)
+    vad = load_silero_vad()
     processor = Qwen3ASRProcessor.from_pretrained(args.model_name, local_files_only=True)
     model = Qwen3ASRForConditionalGeneration.from_pretrained(
         args.model_name,
@@ -150,7 +167,21 @@ def main():
         window_s=args.vad_window_s,
         overlap_s=args.vad_overlap_s,
     )  # original-audio samples, suitable for ASR and SRT
-    print(len(timestamps))
+    if not args.no_foreground_filter:
+        foreground = detect_foreground(
+            audio,
+            args.foreground_peak_dbfs,
+            round(args.foreground_padding_s * samplerate),
+            round(args.foreground_merge_gap_s * samplerate),
+        )
+        speech = [(t["start"], t["end"]) for t in timestamps]
+        min_samples = round(min_speech_duration_ms * samplerate / 1000)
+        timestamps = [
+            {"start": start, "end": end}
+            for start, end in intersect_intervals(speech, foreground)
+            if end - start >= min_samples
+        ]
+    print(f"待转录片段: {len(timestamps)}")
 
     # 生成 srt 字幕文件
     # batch stt
@@ -179,6 +210,8 @@ def main():
             for t, text in zip(batch_timestamps, texts):
                 start, end = t["start"], t["end"]
                 text = text.strip()
+                if ignore_regex is not None and ignore_regex.fullmatch(text):
+                    continue
                 f.write(f"{counter}\n")
                 f.write(f"{sample2timestamp(start)} --> {sample2timestamp(end)}\n")
                 f.write(f"{text}\n\n")
