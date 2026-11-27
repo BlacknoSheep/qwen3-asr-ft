@@ -1,8 +1,9 @@
+import os
 from dataclasses import dataclass
 from typing import Any
 
 import torch
-from datasets import Audio, Dataset
+from datasets import Audio, Dataset, load_dataset
 from transformers.models.qwen3_asr import Qwen3ASRProcessor
 
 from .utils import (
@@ -97,3 +98,32 @@ class SimpleDataManager:
             processor=self.processor,
             dtype=dtype,
         )
+
+    @classmethod
+    def from_path(
+        cls,
+        data_name_or_path: str,
+        processor: Qwen3ASRProcessor,
+        samplerate=16000,
+        *,
+        split: str = "train",
+        load_from_cache_file: bool = True,
+        num_proc: int | None = None,
+    ) -> "SimpleDataManager":
+        """
+        加载 Hugging Face 数据集的指定 split，或将本地 JSON/JSONL 文件作为该 split 加载。
+        数据集需包含 audio、language、transcription 列。
+        audio 是音频绝对路径或相对路径（相对于该 jsonl 文件所在目录）
+        """
+        if data_name_or_path.endswith((".json", ".jsonl")):
+            data_file = os.path.abspath(data_name_or_path)
+            dataset_dir = os.path.dirname(data_file)
+            dataset = load_dataset("json", data_files={split: data_file}, split=split)
+            dataset = dataset.map(
+                lambda example: {"audio": os.path.join(dataset_dir, example["audio"])},
+                load_from_cache_file=load_from_cache_file,
+                num_proc=num_proc,
+            )
+        else:
+            dataset = load_dataset(data_name_or_path, split=split)
+        return cls(dataset=dataset, processor=processor, samplerate=samplerate)

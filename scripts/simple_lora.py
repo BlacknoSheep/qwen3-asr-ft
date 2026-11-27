@@ -3,7 +3,6 @@ import os
 
 import torch
 import yaml
-from datasets import load_dataset
 from peft import LoraConfig, get_peft_model
 from transformers import (
     Seq2SeqTrainer,
@@ -83,25 +82,12 @@ def main() -> None:
     model.print_trainable_parameters()
 
     # ---------------- dataset ----------------
-    if data_config["data_file"].endswith(".json") or data_config["data_file"].endswith(".jsonl"):
-        dataset = load_dataset(
-            "json",
-            data_files=data_config["data_file"],
-            split="train",
-        )
-        dataset_dir = os.path.dirname(data_config["data_file"])
-        dataset = dataset.map(
-            lambda x: {"audio": os.path.join(dataset_dir, x["audio"])},
-            load_from_cache_file=data_config["load_from_cache_file"],
-            num_proc=data_config["num_proc"],
-        )
-    else:
-        dataset = load_dataset(data_config["data_file"], split="train")
-
-    dm = SimpleDataManager(
-        dataset=dataset,
+    dm = SimpleDataManager.from_path(
+        data_name_or_path=data_config["data_file"],
         processor=processor,
         samplerate=SAMPLE_RATE,
+        load_from_cache_file=data_config["load_from_cache_file"],
+        num_proc=data_config["num_proc"],
     )
 
     train_dataset = dm.get_dataset(

@@ -44,7 +44,7 @@ PY
 
 ## jsonl 数据
 
-类似以下格式，其中`audio`字段是音频路径（相对于该 jsonl 文件）
+类似以下格式，其中`audio`字段是音频绝对路径或相对路径（相对于该 jsonl 文件所在目录）
 
 ```jsonl
 {"audio": "audio/000001.wav", "language": "zh", "transcription": "塔菲去哪儿了"}
@@ -58,7 +58,7 @@ PY
 - generate_srt_silero_vad.py：silero_vad 打轴
 - generate_srt_n3d.py：使用 Nemotron-3-Diarization 打轴（效果最好！）
 - generate_srt_qwen3：使用 asr 模型以滑动短窗口，通过识别空白进行打轴
-  - 注意原版 qwen3-asr 幻觉严重，无法准确识别空白，最好使用初步微调后的模型
+    - 注意原版 qwen3-asr 幻觉严重，无法准确识别空白，最好使用初步微调后的模型
 - 模型幻觉一般为 `"system"` 和系统提示词，可通过 `--ignore_regex` 参数进行过滤（`regex.fullmatch()`），例如 `--ignore_regex="system|Speaker:.*"`
 - `--foreground_peak_dbfs` 用于设置前景阈值，过滤低响度片段，默认 -30.0。应根据实际情况调整。
 
@@ -100,7 +100,7 @@ python -m scripts.simple_lora config/examples/allQKVO_proj.yaml
 注意：
 
 - 为了充分利用样本，确保 `per_device_train_batch_size` × `gradient_accumulation_steps` × `max_steps` >= 样本数量
-  - 默认 `max_steps=100`，步数过多会过拟合
+    - 默认 `max_steps=100`，步数过多会过拟合
 - 默认 `rank=16` ，可根据样本数量适当调整
 - 显存不足时可以降低 `per_device_train_batch_size` 和 `rank`
 

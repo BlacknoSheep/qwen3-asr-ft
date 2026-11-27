@@ -1,10 +1,8 @@
 import argparse
-import os
 from typing import Any
 
 import regex as re
 import torch
-from datasets import load_dataset
 from tqdm.auto import tqdm
 from transformers.models.qwen3_asr import (
     Qwen3ASRForConditionalGeneration,
@@ -85,20 +83,11 @@ def main() -> None:
     model.eval()
 
     # ---------------- dataset ----------------
-    if args.data_file.endswith((".json", ".jsonl")):
-        dataset = load_dataset("json", data_files=args.data_file, split="train")
-        dataset_dir = os.path.dirname(os.path.abspath(args.data_file))
-        dataset = dataset.map(
-            lambda x: {"audio": os.path.join(dataset_dir, x["audio"])},
-            num_proc=args.num_proc,
-        )
-    else:
-        dataset = load_dataset(args.data_file, split="train")
-
-    dm = SimpleDataManager(
-        dataset=dataset,
+    dm = SimpleDataManager.from_path(
+        data_name_or_path=args.data_file,
         processor=processor,
         samplerate=SAMPLE_RATE,
+        num_proc=args.num_proc,
     )
     dataset = dm.get_dataset(num_proc=args.num_proc)
 
